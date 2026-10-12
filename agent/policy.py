@@ -51,5 +51,51 @@ class PolicyContext:
     expires_at: str = ""
 
 
-def check(context: PolicyContext) -> tuple[bool, str]:
+def _stub_check(context: PolicyContext) -> tuple[bool, str]:
     raise NotImplementedError("BƯỚC 3b: implement policy check")
+
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+
+_PRINCIPALS_PATH = Path(__file__).resolve().parent.parent / "data" / "principals.json"
+
+
+def _load_principals() -> dict:
+    return json.loads(_PRINCIPALS_PATH.read_text(encoding="utf-8"))
+
+
+def _expired(value: str) -> bool:
+    if not value:
+        return True
+    try:
+        expiry = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return expiry <= datetime.now(timezone.utc)
+    except ValueError:
+        return True
+
+
+def check(context: PolicyContext) -> tuple[bool, str]:
+    if context.data_classification == "restricted" and context.egress_enabled:
+        return False, "restricted data cannot use egress"
+
+    principal = _load_principals().get(context.principal_id)
+    if principal is None:
+        return False, "unknown principal"
+    if _expired(context.expires_at):
+        return False, "authorization expired or missing"
+    if context.request_purpose not in principal.get("purposes", []):
+        return False, "request purpose is not authorized for principal"
+
+    if context.requested_tool:
+        effective_scopes = set(principal.get("allowed_tools", []))
+        effective_scopes.intersection_update(context.agent_scopes)
+        if context.delegation_depth > 0:
+            effective_scopes.intersection_update(context.parent_scopes)
+        if context.requested_tool not in effective_scopes:
+            return False, "requested tool is outside effective scope"
+
+    return True, "principal, purpose, scope, and authorization are valid"

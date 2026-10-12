@@ -40,9 +40,62 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def append(entry: dict, path: Path) -> dict:
+def _stub_append(entry: dict, path: Path) -> dict:
     raise NotImplementedError("BƯỚC 3d: implement ledger append")
 
 
-def verify(path: Path) -> bool:
+def _stub_verify(path: Path) -> bool:
     raise NotImplementedError("BƯỚC 3d: implement ledger verify")
+
+
+import hashlib
+import json
+
+_GENESIS = "0" * 64
+
+
+def _digest(entry: dict) -> str:
+    payload = {key: value for key, value in entry.items() if key != "hash"}
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def append(entry: dict, path: Path) -> dict:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    previous_hash = _GENESIS
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if lines:
+            try:
+                previous_hash = json.loads(lines[-1]).get("hash", _GENESIS)
+            except (json.JSONDecodeError, TypeError):
+                previous_hash = _GENESIS
+
+    record = dict(entry)
+    record["prev_hash"] = previous_hash
+    record["hash"] = _digest(record)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return record
+
+
+def verify(path: Path) -> bool:
+    path = Path(path)
+    if not path.exists():
+        return True
+    previous_hash = _GENESIS
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            record = json.loads(line)
+            if not record.get("reason"):
+                return False
+            if record.get("prev_hash") != previous_hash:
+                return False
+            if record.get("hash") != _digest(record):
+                return False
+            previous_hash = record["hash"]
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, KeyError):
+        return False
+    return True

@@ -31,9 +31,62 @@ set ở tests/vn_pii_testset.jsonl):
 from __future__ import annotations
 
 
-def detect(text: str) -> list[dict]:
+def _stub_detect(text: str) -> list[dict]:
     raise NotImplementedError("BƯỚC 3a: implement PII detection")
 
 
-def redact(text: str) -> str:
+def _stub_redact(text: str) -> str:
     raise NotImplementedError("BƯỚC 3a: implement PII redaction")
+
+
+import re
+
+_CCCD_RE = re.compile(r"(?<!\d)\d{12}(?!\d)")
+_PHONE_RE = re.compile(r"(?<!\d)(0(?:[ .-]?\d){8,9})(?!\d)")
+_EMAIL_RE = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@"
+    r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9.-])"
+)
+_BANK_RE = re.compile(
+    r"(?i)(?:stk|số\s+tài\s+khoản|so\s+tai\s+khoan)"
+    r"\s*(?:[:#-]\s*)?(?P<value>\d{8,16})(?!\d)"
+)
+
+
+def _candidate_entities(text: str) -> list[dict]:
+    entities: list[dict] = []
+    for match in _CCCD_RE.finditer(text):
+        entities.append({"type": "VN_CCCD", "start": match.start(), "end": match.end()})
+    for match in _PHONE_RE.finditer(text):
+        entities.append({"type": "VN_PHONE", "start": match.start(), "end": match.end()})
+    for match in _EMAIL_RE.finditer(text):
+        entities.append({"type": "EMAIL", "start": match.start(), "end": match.end()})
+    for match in _BANK_RE.finditer(text):
+        entities.append({
+            "type": "VN_BANK_ACCOUNT",
+            "start": match.start("value"),
+            "end": match.end("value"),
+        })
+    return entities
+
+
+def detect(text: str) -> list[dict]:
+    priority = {"EMAIL": 0, "VN_CCCD": 1, "VN_BANK_ACCOUNT": 2, "VN_PHONE": 3}
+    candidates = sorted(
+        _candidate_entities(text),
+        key=lambda item: (item["start"], -(item["end"] - item["start"]), priority[item["type"]]),
+    )
+    selected: list[dict] = []
+    for entity in candidates:
+        if any(entity["start"] < other["end"] and other["start"] < entity["end"] for other in selected):
+            continue
+        selected.append(entity)
+    return sorted(selected, key=lambda item: (item["start"], item["end"]))
+
+
+def redact(text: str) -> str:
+    redacted = text
+    for entity in reversed(detect(text)):
+        replacement = f"[REDACTED_{entity['type']}]"
+        redacted = redacted[:entity["start"]] + replacement + redacted[entity["end"]:]
+    return redacted
