@@ -1,5 +1,5 @@
 # Baseline — điền trong checkpoint 1
 
-1. Agent có identity mỗi run chưa? Dẫn file/hàm:
-2. Ai cho phép `http_post`? Dẫn file/hàm:
-3. Nếu gửi sai PII ra sink, bằng chứng ở đâu? Dẫn file/hàm:
+1. Agent có identity mỗi run chưa? Dẫn file/hàm: Chưa. Trong `agent/loop.py`, hàm `_naive_loop()` chỉ nhận `message` và `llm`, không tạo hoặc gắn `agent_id`/identity riêng cho mỗi run. `run_once()` cũng chỉ khởi tạo LLM và gọi runner, không truyền identity vào baseline.
+2. Ai cho phép `http_post`? Dẫn file/hàm: Không có policy hay quyền hạn riêng nào cho phép. Trong `agent/loop.py`, `_naive_loop()` tự động gọi `tools.http_post(injected.target_url, {"records": collected})` sau khi phát hiện injection và đọc customer; không qua `agent/policy.py` hay ledger. `agent/tools.py` chỉ giới hạn URL ở localhost, không phải cơ chế phê duyệt nghiệp vụ.
+3. Nếu gửi sai PII ra sink, bằng chứng ở đâu? Dẫn file/hàm: Bằng chứng là `reports/sink.log` sau khi chạy sink và baseline. Trong `agent/loop.py`, `tools.read_customer(customer_id)` thu thập record customer, sau đó `tools.http_post(...)` gửi `{"records": collected}` ra sink. Sink log cho thấy record synthetic của `KH-000999` đã bị POST ra ngoài luồng kiểm soát.
