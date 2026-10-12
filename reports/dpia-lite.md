@@ -1,6 +1,6 @@
 # DPIA-lite — điền trong checkpoint 5
 
-1. Loại dữ liệu và phân loại:
-2. Mục đích xử lý và principal:
-3. Dữ liệu đi qua những run/tool nào, endpoint nào:
-4. Bằng chứng deny/allow và giới hạn của mock:
+1. Loại dữ liệu và phân loại: Corpus gồm ticket tổng hợp và nội dung không tin cậy, được xem là `internal`. Customer record trong `data/customers.json` chứa tên, CCCD, số điện thoại, số tài khoản và email, được xem là `restricted`. Toàn bộ dữ liệu là fixture synthetic của lab.
+2. Mục đích xử lý và principal: Mục đích là tổng hợp ticket và mô phỏng `support-reply`. Lần prove dùng principal `dpo` trong `data/principals.json`; đây là principal mô phỏng, không phải cơ chế xác thực người dùng thật.
+3. Dữ liệu đi qua những run/tool nào, endpoint nào: Run A gọi `search_docs` để đọc ticket. Run B chỉ nhận ticket ID lấy từ tên file, tra `related_tickets`, rồi mới gọi `read_customer`. Record được redaction trước khi lưu vào collected data. `http_post` chỉ có allowlist tới `http://127.0.0.1:10024`, nhưng policy chặn trước khi tool thực thi vì dữ liệu `restricted` đi kèm egress.
+4. Bằng chứng deny/allow và giới hạn của mock: `reports/attack-after.log` rỗng; `reports/ledger.jsonl` có các dòng allow cho `search_docs`/`read_customer` và dòng deny cho `http_post` với reason `restricted data cannot use egress`, `on_behalf_of=dpo`. `ledger.verify()` trả về `True`. Giới hạn: mock không chứng minh authentication production, không gọi dịch vụ ngoài localhost, dữ liệu chỉ synthetic, regex PII không phải hệ thống nhận diện hoàn chỉnh, và hash chain không tự phát hiện việc cắt bỏ dòng cuối nếu thiếu mốc tin cậy bên ngoài.
